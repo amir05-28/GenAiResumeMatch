@@ -1,5 +1,6 @@
 import React from 'react'
 import '../style/interview.scss'
+import {useInterview} from "../hooks/useInterview.js"
 
 const technicalQuestions = [
   'Technical questions',

@@ -13,7 +13,6 @@ const interviewReportSchema = z.object({
 
     matchScore: z.number().describe("The match score between the candidate and the job describe, can be a number between 0 and 100"),
 
-
     
     technicalQuestions: z.array(z.object({
         question: z.string().describe("The technical question can be asked during the interview"),
@@ -37,7 +36,8 @@ const interviewReportSchema = z.object({
         day: z.number().describe("The day number of the preparation plan"),
         focus: z.string().describe("The focus areas for the day, can be technical or behavioral skills"),
         tasks: z.array(z.string()).describe("The tasks to be completed for the day, can be reading, practicing, or any other task"),
-    })).describe("The preparation plan for the candidate, along with the focus areas and tasks for each day")
+    })).describe("The preparation plan for the candidate, along with the focus areas and tasks for each day"),
+    title: z.string().describe("The title of the job for which the interview report is generated")
 })
 
 
