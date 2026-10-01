@@ -234,7 +234,7 @@ $severity-low: #3fb950;
         gap: 0.4rem;
 
         p {
-            margin: 0;
+            margin-top: 0.5;
             font-size: 0.835rem;
             // color: lighten($text-muted, 15%);
             color: color.adjust($text-muted, $lightness: 15%);
