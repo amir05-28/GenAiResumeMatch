@@ -9,7 +9,7 @@ const ai = new GoogleGenAI({
 
 
 const interviewReportSchema = z.object({
-    matchScore: z.number().describe("A score between 0 and 100 indicating how well the candidate's profile matches the job describe"),
+    matchScore: z.number().min(0).max(100).describe("A score between 0 and 100 indicating how well the candidate's profile matches the job description"),
     technicalQuestions: z.array(z.object({
         question: z.string().describe("The technical question can be asked in the interview"),
         intention: z.string().describe("The intention of interviewer behind asking this question"),
@@ -32,25 +32,127 @@ const interviewReportSchema = z.object({
     title: z.string().describe("The title of the job for which the interview report is generated"),
 })
 
+// Keep this schema inline and limited to Gemini's supported JSON Schema subset.
+// Every array item is explicitly an object with required fields.
+const interviewReportResponseSchema = {
+    type: "object",
+    properties: {
+        matchScore: { type: "number", description: "A score from 0 to 100." },
+        technicalQuestions: {
+            type: "array",
+            items: {
+                type: "object",
+                properties: {
+                    question: { type: "string" },
+                    intention: { type: "string" },
+                    answer: { type: "string" },
+                },
+                required: ["question", "intention", "answer"],
+            },
+        },
+        behavioralQuestions: {
+            type: "array",
+            items: {
+                type: "object",
+                properties: {
+                    question: { type: "string" },
+                    intention: { type: "string" },
+                    answer: { type: "string" },
+                },
+                required: ["question", "intention", "answer"],
+            },
+        },
+        skillGaps: {
+            type: "array",
+            items: {
+                type: "object",
+                properties: {
+                    skill: { type: "string" },
+                    severity: { type: "string", enum: ["low", "medium", "high"] },
+                },
+                required: ["skill", "severity"],
+            },
+        },
+        preparationPlan: {
+            type: "array",
+            items: {
+                type: "object",
+                properties: {
+                    day: { type: "integer" },
+                    focus: { type: "string" },
+                    tasks: { type: "array", items: { type: "string" } },
+                },
+                required: ["day", "focus", "tasks"],
+            },
+        },
+        title: { type: "string", description: "A concise job title." },
+    },
+    required: [
+        "matchScore",
+        "technicalQuestions",
+        "behavioralQuestions",
+        "skillGaps",
+        "preparationPlan",
+        "title",
+    ],
+}
+
 async function generateInterviewReport({ resume, selfDescription, jobDescription }) {
 
 
-    const prompt = `Generate an interview report for a candidate with the following details:
-                        Resume: ${resume}
-                        Self Description: ${selfDescription}
-                        Job Description: ${jobDescription}
-`
+    const prompt = `Create a complete interview preparation report using the candidate information below.
+
+Return every field in the required JSON schema. Do not return empty arrays.
+- matchScore: an integer from 0 to 100 based on evidence in the candidate profile.
+- technicalQuestions: at least 5 role-specific questions. Each needs a useful intention and a concrete answer outline.
+- behavioralQuestions: at least 5 relevant questions. Each needs a useful intention and a concrete answer outline.
+- skillGaps: at least 3 actual gaps between the profile and job requirements, with severity low, medium, or high. If evidence is limited, identify reasonable gaps rather than returning an empty array.
+- preparationPlan: exactly 7 days, numbered 1 through 7, each with a focus and at least 2 actionable tasks.
+- title: a concise job title inferred from the job description, not a copied paragraph.
+
+Candidate resume:
+${resume || "Not provided"}
+
+Candidate self-description:
+${selfDescription || "Not provided"}
+
+Job description:
+${jobDescription}`
 
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: prompt,
         config: {
             responseMimeType: "application/json",
-            responseSchema: zodToJsonSchema(interviewReportSchema),
+            responseJsonSchema: interviewReportResponseSchema,
         }
     })
 
-    return JSON.parse(response.text)
+    const parsed = interviewReportSchema.safeParse(JSON.parse(response.text))
+    if (!parsed.success) {
+        throw new Error(`AI returned an invalid interview report: ${parsed.error.message}`)
+    }
+
+    const report = parsed.data
+    const problems = []
+    if (report.technicalQuestions.length < 5) problems.push("at least 5 technical questions")
+    if (report.behavioralQuestions.length < 5) problems.push("at least 5 behavioral questions")
+    if (report.skillGaps.length < 3) problems.push("at least 3 skill gaps")
+    if (report.preparationPlan.length < 7) problems.push("a 7-day preparation plan")
+    if (problems.length) {
+        console.error("Gemini returned an incomplete interview report:", problems.join(", "))
+        throw new Error(`AI report is incomplete; expected ${problems.join(", ")}.`)
+    }
+
+    console.info("Gemini interview report validated", {
+        technicalQuestions: report.technicalQuestions.length,
+        behavioralQuestions: report.behavioralQuestions.length,
+        skillGaps: report.skillGaps.length,
+        preparationDays: report.preparationPlan.length,
+        hasMatchScore: Number.isFinite(report.matchScore),
+    })
+
+    return report
 
 
 }
